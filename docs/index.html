@@ -244,13 +244,21 @@
       .metrics-bar { flex-direction: column; align-items: center; }
       .timer-display { font-size: 1.5rem; min-width: 70px; margin-left: 0; }
     }
+    .us-shock-btn {
+      padding: 0.5rem 0.9rem; border: 2px solid #b91c1c; border-radius: 6px;
+      background: white; color: #b91c1c; font-size: 0.82rem; font-weight: 600;
+      cursor: pointer; line-height: 1.4; text-align: left; transition: all 0.15s;
+    }
+    .us-shock-btn:hover { background: #fee2e2; }
+    .us-shock-btn.active { background: #b91c1c; color: white; }
+    .us-shock-btn.active span { color: #fca5a5; }
   </style>
 </head>
 <body>
   <header>
     <div>
       <h1>Climate Agreements Simulation</h1>
-      <p>Simulate international climate negotiations across 6 country groups</p>
+      <p>COP31 Climate Negotiations &mdash; PA 388K/345 Climate Policy, LBJ School, UT Austin</p>
     </div>
   </header>
 
@@ -276,11 +284,10 @@
     <div class="timer-bar">
       <span class="timer-label">Timer</span>
       <div class="timer-presets">
-        <button class="timer-preset" data-min="1">1m</button>
-        <button class="timer-preset" data-min="2">2m</button>
-        <button class="timer-preset" data-min="4">4m</button>
         <button class="timer-preset" data-min="5">5m</button>
         <button class="timer-preset" data-min="8">8m</button>
+        <button class="timer-preset" data-min="12">12m</button>
+        <button class="timer-preset" data-min="15">15m</button>
       </div>
       <input type="number" class="timer-custom" id="timerCustom" placeholder="min" min="1" max="99">
       <div class="timer-controls">
@@ -289,6 +296,25 @@
       </div>
       <div class="timer-display" id="timerDisplay">--:--</div>
       <div class="timer-progress-track"><div class="timer-progress-fill" id="timerProgress"></div></div>
+    </div>
+
+    <!-- US Shock Panel (Instructor Only) -->
+    <div class="card" style="border:2px solid #b91c1c; background:#fff7f7;">
+      <div class="card-header" style="background:#b91c1c; color:white; cursor:pointer;" id="usShockToggle">
+        <span>&#9888;&nbsp; Instructor: U.S. Exogenous Shock Panel</span>
+        <span id="usShockChevron" style="margin-left:auto; font-size:0.85rem;">&#9660; expand</span>
+      </div>
+      <div id="usShockBody" style="display:none; flex-direction:column; gap:0.75rem; padding:1rem 1.25rem;">
+        <div style="font-size:0.82rem; color:#7f1d1d; font-style:italic;">
+          The U.S. is not a negotiating party. Use the buttons below to announce a U.S. action between rounds. The model updates immediately.
+        </div>
+        <div style="display:flex; gap:0.75rem; flex-wrap:wrap;">
+          <button class="us-shock-btn active" data-shock="bau">BAU (default)<br><span style="font-size:0.73rem; font-weight:400;">Current trajectory, no new policy</span></button>
+          <button class="us-shock-btn" data-shock="reentry">Shock A: Re-entry<br><span style="font-size:0.73rem; font-weight:400;">New president rejoins UNFCCC + net zero 2050</span></button>
+          <button class="us-shock-btn" data-shock="oilexpand">Shock B: Oil Expansion<br><span style="font-size:0.73rem; font-weight:400;">Lifts Iran/Venezuela sanctions, expands production</span></button>
+        </div>
+        <div id="usShockStatus" style="font-size:0.85rem; font-weight:600; color:#b91c1c;">Active: Business-as-Usual</div>
+      </div>
     </div>
 
     <!-- Headline metrics -->
@@ -409,38 +435,61 @@
 
 <script>
 // ======================== COUNTRY DATA ========================
-// GDP per capita: World Bank WDI (NY.GDP.PCAP.CD), 2024 current US$.
-// Population: World Bank (SP.POP.TOTL), 2024.
-// Baseline temperature & Tconv: Burke, Hsiang & Miguel (2015) replication package.
-// Emissions: EDGAR 2025 Report / IEA Global Energy Review 2025, 2024 data.
-// Growth rates: calibrated long-run assumptions informed by IMF WEO and OECD projections.
+// Five negotiating groups for PA 388K/345 COP31 simulation.
+// Parameters aggregated from World Bank WDI (2024), EDGAR 2025, IEA 2025,
+// Burke, Hsiang & Miguel (2015) temperature conversion factors.
+// US is excluded as a negotiating party — see instructor shock panel below.
 
 const COUNTRY_DATA = [
-  { id: "us",  name: "United States",       pop0: 340e6,  gdpCap0: 84534, baseTemp: 13.6,
-    gdpGrowth: 0.015, popGrowth: 0.004, tconv: 1.32,
-    emissions0: 5.9, emisGrowth: -0.005,
-    costParams: { c1: 200, c2: 50 }, color: "#2563eb" },
-  { id: "eu",  name: "European Union",      pop0: 450e6,  gdpCap0: 43305, baseTemp: 11.2,
-    gdpGrowth: 0.013, popGrowth: -0.001, tconv: 1.14,
-    emissions0: 3.2, emisGrowth: -0.020,
+  { id: "he",  name: "High Emitters (Japan + EU)",
+    pop0: 575e6,  gdpCap0: 42500, baseTemp: 11.7,
+    gdpGrowth: 0.013, popGrowth: -0.001, tconv: 1.19,
+    emissions0: 4.37, emisGrowth: -0.018,
     costParams: { c1: 200, c2: 50 }, color: "#7c3aed" },
-  { id: "cn",  name: "China",               pop0: 1409e6, gdpCap0: 13303, baseTemp: 14.2,
-    gdpGrowth: 0.035, popGrowth: -0.003, tconv: 1.29,
-    emissions0: 15.5, emisGrowth: 0.005,
-    costParams: { c1: 100, c2: 25 }, color: "#e11d48" },
-  { id: "in",  name: "India",               pop0: 1451e6, gdpCap0: 2695,  baseTemp: 25.7,
-    gdpGrowth: 0.050, popGrowth: 0.007, tconv: 1.14,
-    emissions0: 4.4, emisGrowth: 0.025,
-    costParams: { c1: 80, c2: 20 }, color: "#f59e0b" },
-  { id: "ssa", name: "Sub-Saharan Africa",  pop0: 1291e6, gdpCap0: 1533,  baseTemp: 22.7,
-    gdpGrowth: 0.025, popGrowth: 0.024, tconv: 1.12,
-    emissions0: 2.4, emisGrowth: 0.025,
-    costParams: { c1: 80, c2: 15 }, color: "#16a34a" },
-  { id: "oil", name: "Oil States",          pop0: 189e6,  gdpCap0: 14339, baseTemp: 19.8,
-    gdpGrowth: 0.015, popGrowth: 0.010, tconv: 1.42,
-    emissions0: 2.8, emisGrowth: 0.015,
-    costParams: { c1: 250, c2: 75 }, color: "#64748b" }
+
+  { id: "eme", name: "Emerging Major Emitters (China + India + Brazil)",
+    pop0: 3075e6, gdpCap0: 8300,  baseTemp: 20.1,
+    gdpGrowth: 0.042, popGrowth: 0.003, tconv: 1.21,
+    emissions0: 22.3, emisGrowth: 0.009,
+    costParams: { c1: 90,  c2: 22 }, color: "#e11d48" },
+
+  { id: "ffe", name: "Fossil Fuel Exporters (Nigeria + Norway)",
+    pop0: 225.5e6, gdpCap0: 4600, baseTemp: 26.0,
+    gdpGrowth: 0.029, popGrowth: 0.025, tconv: 1.12,
+    emissions0: 0.77, emisGrowth: 0.022,
+    costParams: { c1: 150, c2: 35 }, color: "#f97316" },
+
+  { id: "cvs", name: "Climate-Vulnerable States (Fiji + Marshall Islands)",
+    pop0: 0.97e6, gdpCap0: 5000, baseTemp: 26.5,
+    gdpGrowth: 0.025, popGrowth: 0.005, tconv: 1.00,
+    emissions0: 0.003, emisGrowth: 0.015,
+    costParams: { c1: 50,  c2: 10 }, color: "#0ea5e9" },
+
+  { id: "odc", name: "Other Developing (Vietnam + Mexico)",
+    pop0: 227e6,  gdpCap0: 8100,  baseTemp: 24.7,
+    gdpGrowth: 0.037, popGrowth: 0.006, tconv: 1.16,
+    emissions0: 1.13, emisGrowth: 0.017,
+    costParams: { c1: 90,  c2: 20 }, color: "#16a34a" }
 ];
+
+// ======================== US DATA (Exogenous — not a negotiating party) ========================
+// US parameters from same sources as above. Used in model for BAU and shock scenarios.
+// Students do not control US inputs; instructor triggers shock between rounds.
+const US_DATA = {
+  id: "us", name: "United States",
+  pop0: 340e6, gdpCap0: 84534, baseTemp: 13.6,
+  gdpGrowth: 0.015, popGrowth: 0.004, tconv: 1.32,
+  emissions0: 5.9,
+  emisGrowth_bau:      -0.005,  // current trajectory (market-driven decline + IRA)
+  emisGrowth_reentry:  -0.005,  // same BAU until policy cuts kick in — see reductionYear
+  emisGrowth_oilexpand: 0.010,  // reversed decarbonization, fossil expansion
+  reductionYear: 2027,           // Shock A: re-entry, cuts begin
+  reductionRate: 0.090,          // Shock A: ~net zero 2050 trajectory
+  costParams: { c1: 200, c2: 50 }, color: "#94a3b8"
+};
+
+// Active US shock mode: 'bau' | 'reentry' | 'oilexpand'
+let usShockMode = 'bau';
 
 // ======================== CONSTANTS ========================
 const BASE_YEAR = 2024;
@@ -478,6 +527,26 @@ function policyEmissions(country, reductionYear, reductionRate) {
   return result;
 }
 
+function usEmissions() {
+  // Returns US emissions pathway based on current shock mode
+  if (usShockMode === 'reentry') {
+    // Net zero 2050 trajectory: BAU until reductionYear, then cuts
+    const bau = YEARS.map((_, i) => US_DATA.emissions0 * Math.pow(1 + US_DATA.emisGrowth_reentry, i));
+    const result = bau.slice();
+    const yearIdx = US_DATA.reductionYear - BASE_YEAR;
+    const peak = bau[yearIdx];
+    for (let i = yearIdx; i < N_YEARS; i++) {
+      result[i] = peak * Math.pow(1 - US_DATA.reductionRate, (BASE_YEAR + i) - US_DATA.reductionYear + 1);
+    }
+    return result;
+  } else if (usShockMode === 'oilexpand') {
+    return YEARS.map((_, i) => US_DATA.emissions0 * Math.pow(1 + US_DATA.emisGrowth_oilexpand, i));
+  } else {
+    // BAU
+    return YEARS.map((_, i) => US_DATA.emissions0 * Math.pow(1 + US_DATA.emisGrowth_bau, i));
+  }
+}
+
 function totalEmissions(policies) {
   const totals = new Array(N_YEARS).fill(0);
   COUNTRY_DATA.forEach(c => {
@@ -485,6 +554,9 @@ function totalEmissions(policies) {
     const path = policyEmissions(c, p.year, p.rate);
     for (let i = 0; i < N_YEARS; i++) totals[i] += path[i];
   });
+  // Always include US (mode-dependent)
+  const us = usEmissions();
+  for (let i = 0; i < N_YEARS; i++) totals[i] += us[i];
   return totals;
 }
 
@@ -901,14 +973,15 @@ function makeConfig(yLabel, datasets, extraY) {
 }
 
 const bauPolicies = Object.fromEntries(COUNTRY_DATA.map(c => [c.id, { year: 2100, rate: 0 }]));
-const bauTotals = totalEmissions(bauPolicies);
+const bauTotals = totalEmissions(bauPolicies); // includes US BAU
 const bauTemp = emissionsToGlobalTemp(bauTotals);
 
 const emissionsChart = new Chart(document.getElementById('emissionsChart'), makeConfig(
   'Gt CO\u2082e / year',
   [
     { label: 'Global BAU', data: bauTotals, borderColor: '#94a3b8', borderDash: [6,3], backgroundColor: 'transparent', borderWidth: 2 },
-    ...COUNTRY_DATA.map(c => ({ label: c.name, data: bauEmissions(c), borderColor: c.color, backgroundColor: 'transparent' }))
+    ...COUNTRY_DATA.map(c => ({ label: c.name, data: bauEmissions(c), borderColor: c.color, backgroundColor: 'transparent' })),
+    { label: 'United States (exogenous)', data: usEmissions(), borderColor: US_DATA.color, borderDash: [4,2], backgroundColor: 'transparent' }
   ]
 ));
 
@@ -1019,6 +1092,32 @@ function updateSummaryTable(policies, policyTemp) {
     </tr>`;
 }
 
+// ======================== US SHOCK PANEL ========================
+
+document.getElementById('usShockToggle').addEventListener('click', () => {
+  const body = document.getElementById('usShockBody');
+  const chevron = document.getElementById('usShockChevron');
+  const open = body.style.display !== 'none';
+  body.style.display = open ? 'none' : 'flex';
+  chevron.textContent = open ? '\u25BC expand' : '\u25B2 collapse';
+});
+
+const shockLabels = {
+  bau:       'Active: Business-as-Usual (U.S. follows current trajectory)',
+  reentry:   'Active: Shock A — U.S. Re-entry (net zero 2050 pledge announced)',
+  oilexpand: 'Active: Shock B — U.S. Oil Expansion (sanctions lifted, production increased)'
+};
+
+document.querySelectorAll('.us-shock-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    usShockMode = btn.dataset.shock;
+    document.querySelectorAll('.us-shock-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('usShockStatus').textContent = shockLabels[usShockMode];
+    updateAll();
+  });
+});
+
 // ======================== UPDATE ========================
 
 function getPolicies() {
@@ -1062,6 +1161,11 @@ function updateAll() {
     emissionsChart.data.datasets[ci + 1].data = path;
     for (let i = 0; i < N_YEARS; i++) policyTotals[i] += path[i];
   });
+  // Add US (exogenous) to policy totals and update its chart line
+  const usPath = usEmissions();
+  const usDatasetIdx = COUNTRY_DATA.length + 1; // after BAU global + 5 countries
+  emissionsChart.data.datasets[usDatasetIdx].data = usPath;
+  for (let i = 0; i < N_YEARS; i++) policyTotals[i] += usPath[i];
   emissionsChart.update();
 
   // 2. Temperature
