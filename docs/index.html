@@ -252,6 +252,12 @@
     .us-shock-btn:hover { background: #fee2e2; }
     .us-shock-btn.active { background: #b91c1c; color: white; }
     .us-shock-btn.active span { color: #fca5a5; }
+    .leverage-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin-top: 0.5rem; }
+    .leverage-table th { text-align: left; padding: 0.3rem 0.5rem; border-bottom: 2px solid #e5e7eb; color: var(--text-muted); font-size: 0.75rem; }
+    .leverage-table td { padding: 0.3rem 0.5rem; border-bottom: 1px solid #f3f4f6; }
+    .leverage-table tr.total-row td { font-weight: 600; border-top: 2px solid #e5e7eb; }
+    .leverage-bar { display: inline-block; height: 8px; background: #2563eb; border-radius: 4px; vertical-align: middle; margin-left: 4px; }
+    .row-hidden { display: none; }
   </style>
 </head>
 <body>
@@ -306,7 +312,7 @@
       </div>
       <div id="usShockBody" style="display:none; flex-direction:column; gap:0.75rem; padding:1rem 1.25rem;">
         <div style="font-size:0.82rem; color:#7f1d1d; font-style:italic;">
-          The U.S. is not a negotiating party. Use the buttons below to announce a U.S. action between rounds. The model updates immediately.
+          The U.S. is not a negotiating party. Announce a U.S. action between rounds — model updates immediately.
         </div>
         <div style="display:flex; gap:0.75rem; flex-wrap:wrap;">
           <button class="us-shock-btn active" data-shock="bau">BAU (default)<br><span style="font-size:0.73rem; font-weight:400;">Current trajectory, no new policy</span></button>
@@ -314,6 +320,38 @@
           <button class="us-shock-btn" data-shock="oilexpand">Shock B: Oil Expansion<br><span style="font-size:0.73rem; font-weight:400;">Lifts Iran/Venezuela sanctions, expands production</span></button>
         </div>
         <div id="usShockStatus" style="font-size:0.85rem; font-weight:600; color:#b91c1c;">Active: Business-as-Usual</div>
+      </div>
+    </div>
+
+    <!-- Leverage Table (Instructor Only — shown in debrief) -->
+    <div class="card" style="border:2px solid #1d4ed8; background:#eff6ff;">
+      <div class="card-header" style="background:#1d4ed8; color:white; cursor:pointer;" id="leverageToggle">
+        <span>&#128200;&nbsp; Instructor: Emissions Leverage Table</span>
+        <span id="leverageChevron" style="margin-left:auto; font-size:0.85rem;">&#9660; expand</span>
+      </div>
+      <div id="leverageBody" style="display:none; padding:1rem 1.25rem; flex-direction:column; gap:0.75rem;">
+        <div style="font-size:0.82rem; color:#1e3a8a; font-style:italic;">
+          Show emissions column after Round 1. Reveal temperature leverage column in debrief only.
+        </div>
+        <div style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.25rem;">
+          <button id="showEmisOnly" style="padding:0.3rem 0.7rem; border:1px solid #1d4ed8; border-radius:4px; background:white; color:#1d4ed8; font-size:0.8rem; cursor:pointer;">Show Emissions Only (Round 1)</button>
+          <button id="showFullLeverage" style="padding:0.3rem 0.7rem; border:1px solid #1d4ed8; border-radius:4px; background:white; color:#1d4ed8; font-size:0.8rem; cursor:pointer;">Reveal Full Leverage (Debrief)</button>
+          <button id="showROW" style="padding:0.3rem 0.7rem; border:1px solid #b91c1c; border-radius:4px; background:white; color:#b91c1c; font-size:0.8rem; cursor:pointer;">Add Rest-of-World (Debrief)</button>
+        </div>
+        <table class="leverage-table" id="leverageTableEl">
+          <thead>
+            <tr>
+              <th>Country</th>
+              <th>Emissions 2024 (Gt)</th>
+              <th class="leverage-temp-col row-hidden">Max leverage (°C)</th>
+            </tr>
+          </thead>
+          <tbody id="leverageTbody"></tbody>
+        </table>
+        <div id="rowPanel" style="display:none; margin-top:0.5rem; padding:0.75rem; background:#fee2e2; border-radius:6px; font-size:0.82rem; color:#7f1d1d;">
+          <strong>Rest-of-World (not at table):</strong> Russia ~2.8 Gt, Indonesia ~2.5 Gt, Saudi Arabia ~0.9 Gt, Canada ~0.8 Gt = ~7 Gt additional.
+          Enter these in the tool at BAU to show the temperature impact of non-participation.
+        </div>
       </div>
     </div>
 
@@ -435,60 +473,76 @@
 
 <script>
 // ======================== COUNTRY DATA ========================
-// Five negotiating groups for PA 388K/345 COP31 simulation.
-// Parameters aggregated from World Bank WDI (2024), EDGAR 2025, IEA 2025,
-// Burke, Hsiang & Miguel (2015) temperature conversion factors.
-// US is excluded as a negotiating party — see instructor shock panel below.
+// 11 individual countries for PA 388K/345 COP31 simulation.
+// Sources: Pop/GDP: World Bank WDI 2024. Temp/Tconv: Burke, Hsiang & Miguel (2015)
+// replication package. Emissions: EDGAR 2025. BAU growth: EDGAR 2025 trends.
+// Abatement cost params (c1, c2): pedagogical calibrations informed by income + energy mix.
 
 const COUNTRY_DATA = [
-  { id: "he",  name: "High Emitters (Japan + EU)",
-    pop0: 575e6,  gdpCap0: 42500, baseTemp: 11.7,
-    gdpGrowth: 0.013, popGrowth: -0.001, tconv: 1.19,
-    emissions0: 4.37, emisGrowth: -0.018,
-    costParams: { c1: 200, c2: 50 }, color: "#7c3aed" },
-
-  { id: "eme", name: "Emerging Major Emitters (China + India + Brazil)",
-    pop0: 3075e6, gdpCap0: 8300,  baseTemp: 20.1,
-    gdpGrowth: 0.042, popGrowth: 0.003, tconv: 1.21,
-    emissions0: 22.3, emisGrowth: 0.009,
-    costParams: { c1: 90,  c2: 22 }, color: "#e11d48" },
-
-  { id: "ffe", name: "Fossil Fuel Exporters (Nigeria + Norway)",
-    pop0: 225.5e6, gdpCap0: 4600, baseTemp: 26.0,
-    gdpGrowth: 0.029, popGrowth: 0.025, tconv: 1.12,
-    emissions0: 0.77, emisGrowth: 0.022,
-    costParams: { c1: 150, c2: 35 }, color: "#f97316" },
-
-  { id: "cvs", name: "Climate-Vulnerable States (Fiji + Marshall Islands)",
-    pop0: 0.97e6, gdpCap0: 5000, baseTemp: 26.5,
-    gdpGrowth: 0.025, popGrowth: 0.005, tconv: 1.00,
-    emissions0: 0.003, emisGrowth: 0.015,
-    costParams: { c1: 50,  c2: 10 }, color: "#0ea5e9" },
-
-  { id: "odc", name: "Other Developing (Vietnam + Mexico)",
-    pop0: 227e6,  gdpCap0: 8100,  baseTemp: 24.7,
-    gdpGrowth: 0.037, popGrowth: 0.006, tconv: 1.16,
-    emissions0: 1.13, emisGrowth: 0.017,
-    costParams: { c1: 90,  c2: 20 }, color: "#16a34a" }
+  // --- HIGH EMITTERS ---
+  { id: "jp", name: "Japan",          student: "Casey",
+    pop0: 124e6,   gdpCap0: 33138, baseTemp: 13.99, gdpGrowth: 0.010, popGrowth: -0.004, tconv: 1.170,
+    emissions0: 1.05,  emisGrowth: -0.025, costParams: { c1: 220, c2: 55 }, color: "#7c3aed",
+    group: "High Emitters" },
+  { id: "eu", name: "European Union", student: "Lauren",
+    pop0: 450e6,   gdpCap0: 38290, baseTemp: 10.85, gdpGrowth: 0.013, popGrowth: -0.001, tconv: 1.184,
+    emissions0: 3.20,  emisGrowth: -0.020, costParams: { c1: 200, c2: 50 }, color: "#4f46e5",
+    group: "High Emitters" },
+  // --- EMERGING MAJOR EMITTERS ---
+  { id: "br", name: "Brazil",         student: "Leah",
+    pop0: 215e6,   gdpCap0: 10294, baseTemp: 22.22, gdpGrowth: 0.025, popGrowth:  0.006, tconv: 1.071,
+    emissions0: 1.28,  emisGrowth:  0.003, costParams: { c1:  80, c2: 18 }, color: "#059669",
+    group: "Emerging Major Emitters" },
+  { id: "cn", name: "China",          student: "Ryan",
+    pop0: 1409e6,  gdpCap0: 13437, baseTemp: 14.21, gdpGrowth: 0.035, popGrowth: -0.002, tconv: 1.286,
+    emissions0: 15.63, emisGrowth:  0.005, costParams: { c1: 100, c2: 25 }, color: "#e11d48",
+    group: "Emerging Major Emitters" },
+  { id: "in", name: "India",          student: "Ian",
+    pop0: 1441e6,  gdpCap0: 2731,  baseTemp: 25.65, gdpGrowth: 0.050, popGrowth:  0.007, tconv: 1.143,
+    emissions0: 4.57,  emisGrowth:  0.030, costParams: { c1:  80, c2: 20 }, color: "#f59e0b",
+    group: "Emerging Major Emitters" },
+  // --- FOSSIL FUEL EXPORTERS ---
+  { id: "ng", name: "Nigeria",        student: "Preston",
+    pop0: 224e6,   gdpCap0: 1596,  baseTemp: 26.84, gdpGrowth: 0.030, popGrowth:  0.025, tconv: 1.109,
+    emissions0: 0.27,  emisGrowth:  0.025, costParams: { c1: 120, c2: 30 }, color: "#78350f",
+    group: "Fossil Fuel Exporters" },
+  { id: "no", name: "Norway",         student: "Nathan",
+    pop0: 5.5e6,   gdpCap0: 89202, baseTemp: 4.83,  gdpGrowth: 0.020, popGrowth:  0.005, tconv: 1.192,
+    emissions0: 0.049, emisGrowth: -0.015, costParams: { c1: 150, c2: 40 }, color: "#0369a1",
+    group: "Fossil Fuel Exporters" },
+  // --- CLIMATE-VULNERABLE STATES ---
+  { id: "fj", name: "Fiji",           student: "Miles",
+    pop0: 0.93e6,  gdpCap0: 5740,  baseTemp: 23.80, gdpGrowth: 0.030, popGrowth:  0.006, tconv: 0.733,
+    emissions0: 0.0022, emisGrowth: 0.010, costParams: { c1:  60, c2: 12 }, color: "#0891b2",
+    group: "Climate-Vulnerable States" },
+  { id: "mh", name: "Marshall Islands", student: "Anisa",
+    pop0: 0.042e6, gdpCap0: 4400,  baseTemp: 27.50, gdpGrowth: 0.020, popGrowth:  0.001, tconv: 0.814,
+    emissions0: 0.00016, emisGrowth: 0.005, costParams: { c1: 70, c2: 15 }, color: "#0e7490",
+    group: "Climate-Vulnerable States" },
+  // --- OTHER DEVELOPING ---
+  { id: "vn", name: "Vietnam",        student: "AJ",
+    pop0: 98e6,    gdpCap0: 4163,  baseTemp: 24.82, gdpGrowth: 0.060, popGrowth:  0.008, tconv: 1.021,
+    emissions0: 0.48,  emisGrowth:  0.045, costParams: { c1:  85, c2: 18 }, color: "#16a34a",
+    group: "Other Developing" },
+  { id: "mx", name: "Mexico",         student: "Sarah",
+    pop0: 130e6,   gdpCap0: 11265, baseTemp: 18.84, gdpGrowth: 0.020, popGrowth:  0.008, tconv: 1.175,
+    emissions0: 0.65,  emisGrowth:  0.005, costParams: { c1:  90, c2: 22 }, color: "#65a30d",
+    group: "Other Developing" },
 ];
 
 // ======================== US DATA (Exogenous — not a negotiating party) ========================
-// US parameters from same sources as above. Used in model for BAU and shock scenarios.
-// Students do not control US inputs; instructor triggers shock between rounds.
 const US_DATA = {
   id: "us", name: "United States",
-  pop0: 340e6, gdpCap0: 84534, baseTemp: 13.6,
-  gdpGrowth: 0.015, popGrowth: 0.004, tconv: 1.32,
+  pop0: 340e6, gdpCap0: 84534, baseTemp: 13.6, tconv: 1.320,
+  gdpGrowth: 0.015, popGrowth: 0.004,
   emissions0: 5.9,
-  emisGrowth_bau:      -0.005,  // current trajectory (market-driven decline + IRA)
-  emisGrowth_reentry:  -0.005,  // same BAU until policy cuts kick in — see reductionYear
-  emisGrowth_oilexpand: 0.010,  // reversed decarbonization, fossil expansion
-  reductionYear: 2027,           // Shock A: re-entry, cuts begin
-  reductionRate: 0.090,          // Shock A: ~net zero 2050 trajectory
+  emisGrowth_bau:       -0.005,
+  emisGrowth_oilexpand:  0.012,
+  reductionYear: 2028,
+  reductionRate: 0.093,   // ~net zero 2050 from 2028 start
   costParams: { c1: 200, c2: 50 }, color: "#94a3b8"
 };
 
-// Active US shock mode: 'bau' | 'reentry' | 'oilexpand'
 let usShockMode = 'bau';
 
 // ======================== CONSTANTS ========================
@@ -528,21 +582,18 @@ function policyEmissions(country, reductionYear, reductionRate) {
 }
 
 function usEmissions() {
-  // Returns US emissions pathway based on current shock mode
   if (usShockMode === 'reentry') {
-    // Net zero 2050 trajectory: BAU until reductionYear, then cuts
-    const bau = YEARS.map((_, i) => US_DATA.emissions0 * Math.pow(1 + US_DATA.emisGrowth_reentry, i));
+    const bau = YEARS.map((_, i) => US_DATA.emissions0 * Math.pow(1 + (-0.005), i));
     const result = bau.slice();
     const yearIdx = US_DATA.reductionYear - BASE_YEAR;
     const peak = bau[yearIdx];
     for (let i = yearIdx; i < N_YEARS; i++) {
-      result[i] = peak * Math.pow(1 - US_DATA.reductionRate, (BASE_YEAR + i) - US_DATA.reductionYear + 1);
+      result[i] = Math.max(0, peak * Math.pow(1 - US_DATA.reductionRate, (BASE_YEAR + i) - US_DATA.reductionYear + 1));
     }
     return result;
   } else if (usShockMode === 'oilexpand') {
     return YEARS.map((_, i) => US_DATA.emissions0 * Math.pow(1 + US_DATA.emisGrowth_oilexpand, i));
   } else {
-    // BAU
     return YEARS.map((_, i) => US_DATA.emissions0 * Math.pow(1 + US_DATA.emisGrowth_bau, i));
   }
 }
@@ -554,7 +605,6 @@ function totalEmissions(policies) {
     const path = policyEmissions(c, p.year, p.rate);
     for (let i = 0; i < N_YEARS; i++) totals[i] += path[i];
   });
-  // Always include US (mode-dependent)
   const us = usEmissions();
   for (let i = 0; i < N_YEARS; i++) totals[i] += us[i];
   return totals;
@@ -973,15 +1023,19 @@ function makeConfig(yLabel, datasets, extraY) {
 }
 
 const bauPolicies = Object.fromEntries(COUNTRY_DATA.map(c => [c.id, { year: 2100, rate: 0 }]));
-const bauTotals = totalEmissions(bauPolicies); // includes US BAU
+const bauTotals = totalEmissions(bauPolicies);
 const bauTemp = emissionsToGlobalTemp(bauTotals);
+
+// Pre-compute BAU dollar damages
+const bauDollarDamages = {};
+COUNTRY_DATA.forEach(c => { bauDollarDamages[c.id] = computeCumulativeDollarDamages(c, bauTemp); });
 
 const emissionsChart = new Chart(document.getElementById('emissionsChart'), makeConfig(
   'Gt CO\u2082e / year',
   [
     { label: 'Global BAU', data: bauTotals, borderColor: '#94a3b8', borderDash: [6,3], backgroundColor: 'transparent', borderWidth: 2 },
     ...COUNTRY_DATA.map(c => ({ label: c.name, data: bauEmissions(c), borderColor: c.color, backgroundColor: 'transparent' })),
-    { label: 'United States (exogenous)', data: usEmissions(), borderColor: US_DATA.color, borderDash: [4,2], backgroundColor: 'transparent' }
+    { label: 'United States (exogenous)', data: usEmissions(), borderColor: US_DATA.color, borderDash: [4,2], backgroundColor: 'transparent', borderWidth: 1.5 }
   ]
 ));
 
@@ -1021,12 +1075,6 @@ function formatDollars(v) {
   const s = abs >= 1000 ? (abs/1000).toFixed(1) + 'T' : abs.toFixed(0) + 'B';
   return (v < 0 ? '-' : '') + '$' + s;
 }
-
-// Pre-compute BAU damages (fixed, used as reference for avoided damages in debrief)
-const bauDollarDamages = {};
-COUNTRY_DATA.forEach(c => {
-  bauDollarDamages[c.id] = computeCumulativeDollarDamages(c, bauTemp);
-});
 
 // Debrief toggle
 document.getElementById('debriefToggle').addEventListener('click', function() {
@@ -1103,9 +1151,9 @@ document.getElementById('usShockToggle').addEventListener('click', () => {
 });
 
 const shockLabels = {
-  bau:       'Active: Business-as-Usual (U.S. follows current trajectory)',
-  reentry:   'Active: Shock A — U.S. Re-entry (net zero 2050 pledge announced)',
-  oilexpand: 'Active: Shock B — U.S. Oil Expansion (sanctions lifted, production increased)'
+  bau:       'Active: Business-as-Usual (current trajectory)',
+  reentry:   'Active: Shock A \u2014 U.S. Re-entry (net zero 2050 announced)',
+  oilexpand: 'Active: Shock B \u2014 U.S. Oil Expansion (sanctions lifted)'
 };
 
 document.querySelectorAll('.us-shock-btn').forEach(btn => {
@@ -1117,6 +1165,93 @@ document.querySelectorAll('.us-shock-btn').forEach(btn => {
     updateAll();
   });
 });
+
+// ======================== LEVERAGE TABLE ========================
+
+document.getElementById('leverageToggle').addEventListener('click', () => {
+  const body = document.getElementById('leverageBody');
+  const chevron = document.getElementById('leverageChevron');
+  const open = body.style.display !== 'none';
+  body.style.display = open ? 'none' : 'flex';
+  chevron.textContent = open ? '\u25BC expand' : '\u25B2 collapse';
+});
+
+// Compute max leverage for each country: aggressive cut (10%/yr from 2025) vs BAU
+function computeMaxLeverage(country) {
+  // BAU scenario
+  const bauP = Object.fromEntries(COUNTRY_DATA.map(c => [c.id, { year: 2100, rate: 0 }]));
+  const bauT = emissionsToGlobalTemp(totalEmissions(bauP));
+
+  // Aggressive cut for this country only
+  const aggP = Object.fromEntries(COUNTRY_DATA.map(c => [c.id, { year: 2100, rate: 0 }]));
+  aggP[country.id] = { year: 2025, rate: 0.10 };
+  const aggT = emissionsToGlobalTemp(totalEmissions(aggP));
+
+  return bauT[N_YEARS - 1] - aggT[N_YEARS - 1];
+}
+
+let leverageData = null;
+let showTempCol = false;
+let showROWPanel = false;
+
+function buildLeverageTable() {
+  if (!leverageData) {
+    leverageData = COUNTRY_DATA.map(c => ({
+      name: c.name,
+      student: c.student,
+      group: c.group,
+      emissions: c.emissions0,
+      leverage: computeMaxLeverage(c),
+      color: c.color
+    })).sort((a, b) => b.emissions - a.emissions);
+  }
+
+  const tbody = document.getElementById('leverageTbody');
+  const maxEmis = Math.max(...leverageData.map(d => d.emissions));
+  const maxLev = Math.max(...leverageData.map(d => d.leverage));
+  const totalEmis = leverageData.reduce((s, d) => s + d.emissions, 0);
+  const totalLev = leverageData.reduce((s, d) => s + d.leverage, 0);
+
+  // Show/hide temp column header
+  document.querySelectorAll('.leverage-temp-col').forEach(el => {
+    el.classList.toggle('row-hidden', !showTempCol);
+  });
+
+  tbody.innerHTML = leverageData.map(d => {
+    const bar = Math.round((d.emissions / maxEmis) * 80);
+    const levBar = Math.round((d.leverage / maxLev) * 80);
+    return `<tr>
+      <td><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${d.color};margin-right:4px;vertical-align:middle;"></span>${d.name}</td>
+      <td>${d.emissions.toFixed(4)} Gt <span class="leverage-bar" style="width:${bar}px;"></span></td>
+      <td class="leverage-temp-col ${showTempCol ? '' : 'row-hidden'}">${d.leverage.toFixed(3)}&deg;C <span class="leverage-bar" style="width:${levBar}px; background:#dc2626;"></span></td>
+    </tr>`;
+  }).join('') +
+  `<tr class="total-row">
+    <td>Total (11 countries)</td>
+    <td>${totalEmis.toFixed(2)} Gt</td>
+    <td class="leverage-temp-col ${showTempCol ? '' : 'row-hidden'}">${totalLev.toFixed(3)}&deg;C</td>
+  </tr>`;
+
+  document.getElementById('rowPanel').style.display = showROWPanel ? 'block' : 'none';
+}
+
+document.getElementById('showEmisOnly').addEventListener('click', () => {
+  showTempCol = false; showROWPanel = false;
+  buildLeverageTable();
+});
+document.getElementById('showFullLeverage').addEventListener('click', () => {
+  showTempCol = true;
+  buildLeverageTable();
+});
+document.getElementById('showROW').addEventListener('click', () => {
+  showTempCol = true; showROWPanel = true;
+  buildLeverageTable();
+});
+
+// Build on first expand
+document.getElementById('leverageToggle').addEventListener('click', () => {
+  if (!leverageData) buildLeverageTable();
+}, { once: false });
 
 // ======================== UPDATE ========================
 
@@ -1161,9 +1296,9 @@ function updateAll() {
     emissionsChart.data.datasets[ci + 1].data = path;
     for (let i = 0; i < N_YEARS; i++) policyTotals[i] += path[i];
   });
-  // Add US (exogenous) to policy totals and update its chart line
+  // Add US (exogenous)
   const usPath = usEmissions();
-  const usDatasetIdx = COUNTRY_DATA.length + 1; // after BAU global + 5 countries
+  const usDatasetIdx = COUNTRY_DATA.length + 1;
   emissionsChart.data.datasets[usDatasetIdx].data = usPath;
   for (let i = 0; i < N_YEARS; i++) policyTotals[i] += usPath[i];
   emissionsChart.update();
